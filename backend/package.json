@@ -12,7 +12,9 @@
         "format": "prettier . --write"
     },
     "dependencies": {
+        "@types/multer": "^2.2.0",
         "express": "^5.2.1",
+        "multer": "^2.2.0",
         "shared": "file:../shared"
     },
     "devDependencies": {
