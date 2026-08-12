@@ -24,7 +24,10 @@ export type BrandingSetIdentifier = string;
 export type ListBrandingSetsEndpoint = Endpoint<void, { items: BrandingSetIdentifier[] } | ApiErrorResponse>;
 
 export type UploadBrandingSetEndpoint = Endpoint<
-    { identifier: BrandingSetIdentifier },
+    {
+        identifier: BrandingSetIdentifier;
+        relativePaths?: string[];
+    },
     {
         identifier: BrandingSetIdentifier;
         fileCount: number;
