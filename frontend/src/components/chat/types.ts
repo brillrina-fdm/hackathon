@@ -15,3 +15,21 @@ export type ChatMessage = {
 export type PingResponse = {
     message?: string;
 };
+
+export type BrandingSetListResponse = {
+    items?: string[];
+    error?: string;
+};
+
+export type BrandingSetUploadResponse = {
+    identifier?: string;
+    fileCount?: number;
+    files?: string[];
+    error?: string;
+};
+
+export type ChatApiResponse = {
+    message?: string;
+    brandingSetId?: string | null;
+    error?: string;
+};

@@ -1,3 +1,119 @@
+.chat-layout {
+    display: grid;
+    grid-template-columns: minmax(220px, 300px) 1fr;
+    gap: 0.9rem;
+    align-items: start;
+}
+
+.branding-panel {
+    width: 100%;
+}
+
+.branding-panel__card {
+    border: 1px solid #2f2f2f;
+    border-radius: 16px;
+    padding: 0.9rem;
+    background: #101010;
+}
+
+.branding-panel__title {
+    margin: 0;
+    font-size: 1rem;
+    letter-spacing: 0.02em;
+}
+
+.branding-panel__subtitle {
+    margin: 0.42rem 0 0.9rem;
+    font-size: 0.82rem;
+    color: #b5b5b5;
+    line-height: 1.35;
+}
+
+.branding-panel__upload-form {
+    display: grid;
+    gap: 0.5rem;
+    margin-bottom: 0.8rem;
+}
+
+.branding-panel__label {
+    font-size: 0.74rem;
+    color: #d9d9d9;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.branding-panel__input,
+.branding-panel__select,
+.branding-panel__file-input {
+    width: 100%;
+    border: 1px solid #3a3a3a;
+    border-radius: 10px;
+    background: #161616;
+    color: #f2f2f2;
+    box-sizing: border-box;
+}
+
+.branding-panel__input,
+.branding-panel__select {
+    padding: 0.52rem 0.6rem;
+    font-size: 0.9rem;
+}
+
+.branding-panel__file-input {
+    padding: 0.45rem;
+    font-size: 0.8rem;
+}
+
+.branding-panel__meta {
+    margin: 0;
+    color: #b0b0b0;
+    font-size: 0.76rem;
+}
+
+.branding-panel__button,
+.branding-panel__refresh-button {
+    border: 1px solid #3a3a3a;
+    border-radius: 999px;
+    padding: 0.45rem 0.7rem;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+
+.branding-panel__button {
+    margin-top: 0.25rem;
+    background: var(--highlight);
+    color: #121212;
+    border-color: transparent;
+}
+
+.branding-panel__refresh-button {
+    margin-top: 0.55rem;
+    width: 100%;
+    background: #1b1b1b;
+    color: #ececec;
+}
+
+.branding-panel__button:disabled,
+.branding-panel__refresh-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.branding-panel__status,
+.branding-panel__error {
+    margin: 0.55rem 0 0;
+    font-size: 0.8rem;
+    line-height: 1.35;
+}
+
+.branding-panel__status {
+    color: #f0f0f0;
+}
+
+.branding-panel__error {
+    color: #ffb8b8;
+}
+
 .upload-form {
     width: 100%;
     border: 1px solid var(--border);
@@ -286,7 +402,17 @@
     color: #f5f5f5;
 }
 
+.upload-form__meta {
+    margin: 0.65rem 0 0;
+    font-size: 0.8rem;
+    color: #cfcfcf;
+}
+
 @media (max-width: 640px) {
+    .chat-layout {
+        grid-template-columns: 1fr;
+    }
+
     .upload-form {
         padding: 0.68rem;
     }
