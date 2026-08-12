@@ -29,6 +29,44 @@
     line-height: 1.35;
 }
 
+.branding-panel__view-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+}
+
+.branding-panel__view-button {
+    border: 1px solid #3a3a3a;
+    background: #171717;
+    color: #dbdbdb;
+    border-radius: 10px;
+    padding: 0.42rem 0.5rem;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+}
+
+.branding-panel__view-button--active {
+    border-color: var(--highlight);
+    background: color-mix(in srgb, var(--highlight) 20%, #151515);
+    color: #f2f2f2;
+}
+
+.branding-panel__section {
+    padding-top: 0.8rem;
+    margin-top: 0.8rem;
+    border-top: 1px solid #262626;
+}
+
+.branding-panel__section-title {
+    margin: 0 0 0.6rem;
+    font-size: 0.82rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #e7e7e7;
+}
+
 .branding-panel__upload-form {
     display: grid;
     gap: 0.5rem;
@@ -64,10 +102,90 @@
     font-size: 0.8rem;
 }
 
+.branding-panel__file-input--hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.branding-panel__dropzone {
+    border: 1px dashed #4c4c4c;
+    border-radius: 12px;
+    background: #171717;
+    min-height: 110px;
+    display: grid;
+    place-content: center;
+    text-align: center;
+    padding: 0.75rem;
+    cursor: pointer;
+    transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.branding-panel__dropzone[aria-disabled="true"] {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+.branding-panel__dropzone:hover {
+    border-color: color-mix(in srgb, var(--highlight) 55%, #4c4c4c);
+    background: #1c1c1c;
+}
+
+.branding-panel__dropzone--active {
+    border-color: var(--highlight);
+    background: #1f2116;
+}
+
+.branding-panel__dropzone-title {
+    font-size: 0.84rem;
+    color: #efefef;
+    font-weight: 600;
+}
+
+.branding-panel__dropzone-subtitle {
+    font-size: 0.74rem;
+    color: #b6b6b6;
+    margin-top: 0.22rem;
+}
+
 .branding-panel__meta {
     margin: 0;
     color: #b0b0b0;
     font-size: 0.76rem;
+}
+
+.branding-panel__file-chip-list .upload-form__file-list {
+    margin: 0;
+    flex-wrap: wrap;
+    overflow-x: visible;
+}
+
+.branding-panel__file-chip-list .upload-form__file-item {
+    max-width: 100%;
+}
+
+.branding-panel__file-chip-list .upload-form__file-name {
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.branding-panel__clear-files-button {
+    border: 1px solid #3a3a3a;
+    background: #171717;
+    color: #dedede;
+    border-radius: 999px;
+    padding: 0.28rem 0.58rem;
+    font-size: 0.74rem;
+    cursor: pointer;
+    margin: 0 0 0.45rem;
+}
+
+.branding-panel__clear-files-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 .branding-panel__button,

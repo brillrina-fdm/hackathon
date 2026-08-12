@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type DragEvent as ReactDragEvent, useEffect, useRef, useState } from "react";
 import ChatComposer from "@/components/chat/ChatComposer";
 import ChatMessageList from "@/components/chat/ChatMessageList";
 import FileChipList from "@/components/chat/FileChipList";
@@ -17,6 +17,7 @@ type ChatInterfaceProps = Readonly<{
 }>;
 
 function ChatInterface({ pingEndpoint = ApiRoutes.ping }: ChatInterfaceProps) {
+    const [brandingView, setBrandingView] = useState<"upload" | "active">("active");
     const [text, setText] = useState("");
     const [files, setFiles] = useState<File[]>([]);
     const [brandingFiles, setBrandingFiles] = useState<File[]>([]);
@@ -28,6 +29,7 @@ function ChatInterface({ pingEndpoint = ApiRoutes.ping }: ChatInterfaceProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isLoadingBrandingSets, setIsLoadingBrandingSets] = useState(true);
     const [isUploadingBrandingSet, setIsUploadingBrandingSet] = useState(false);
+    const [isBrandingDropActive, setIsBrandingDropActive] = useState(false);
     const [brandingError, setBrandingError] = useState<string | null>(null);
     const [brandingStatus, setBrandingStatus] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -183,6 +185,53 @@ function ChatInterface({ pingEndpoint = ApiRoutes.ping }: ChatInterfaceProps) {
         }
     };
 
+    const handleBrandingDragOver = (event: ReactDragEvent<HTMLLabelElement>) => {
+        event.preventDefault();
+        if (!isUploadingBrandingSet) {
+            setIsBrandingDropActive(true);
+        }
+    };
+
+    const handleBrandingDragLeave = (event: ReactDragEvent<HTMLLabelElement>) => {
+        event.preventDefault();
+        setIsBrandingDropActive(false);
+    };
+
+    const handleBrandingDrop = (event: ReactDragEvent<HTMLLabelElement>) => {
+        event.preventDefault();
+        setIsBrandingDropActive(false);
+
+        if (isUploadingBrandingSet) {
+            return;
+        }
+
+        const droppedFiles = Array.from(event.dataTransfer.files ?? []);
+        if (!droppedFiles.length) {
+            return;
+        }
+
+        setBrandingFiles((currentFiles) => {
+            const seen = new Set(currentFiles.map(getFileKey));
+            const uniqueNewFiles = droppedFiles.filter((file) => {
+                const fileKey = getFileKey(file);
+                if (seen.has(fileKey)) {
+                    return false;
+                }
+                seen.add(fileKey);
+                return true;
+            });
+
+            return [...currentFiles, ...uniqueNewFiles];
+        });
+    };
+
+    const clearBrandingFiles = () => {
+        setBrandingFiles([]);
+        if (brandingFileInputRef.current) {
+            brandingFileInputRef.current.value = "";
+        }
+    };
+
     const submitBrandingUpload = async (event: { preventDefault: () => void }) => {
         event.preventDefault();
         setBrandingError(null);
@@ -311,80 +360,142 @@ function ChatInterface({ pingEndpoint = ApiRoutes.ping }: ChatInterfaceProps) {
     };
 
     const hasContent = text.trim().length > 0 || files.length > 0;
+    const canUploadBrandingSet = Boolean(normalizeBrandingIdentifier(brandingIdentifier)) && brandingFiles.length > 0;
 
     return (
         <div className="chat-layout">
             <aside className="branding-panel" aria-label="Branding side panel">
                 <div className="branding-panel__card">
                     <h2 className="branding-panel__title">Branding Sets</h2>
-                    <p className="branding-panel__subtitle">Upload branding assets and choose which set should be attached to chat requests.</p>
+                    <p className="branding-panel__subtitle">Manage branding uploads separately from the set currently used in chat.</p>
 
-                    <form className="branding-panel__upload-form" onSubmit={submitBrandingUpload}>
-                        <label htmlFor="branding-identifier" className="branding-panel__label">
-                            Identifier
-                        </label>
-                        <input
-                            id="branding-identifier"
-                            type="text"
-                            value={brandingIdentifier}
-                            onChange={(event) => setBrandingIdentifier(event.target.value)}
-                            placeholder="e.g. acme-launch-2026"
-                            className="branding-panel__input"
-                            disabled={isUploadingBrandingSet}
-                        />
-
-                        <label htmlFor="branding-files" className="branding-panel__label">
-                            Files
-                        </label>
-                        <input
-                            ref={brandingFileInputRef}
-                            id="branding-files"
-                            type="file"
-                            multiple
-                            onChange={handleBrandingFileChange}
-                            className="branding-panel__file-input"
-                            disabled={isUploadingBrandingSet}
-                        />
-
-                        {brandingFiles.length ? (
-                            <p className="branding-panel__meta">{brandingFiles.length} file(s) ready for upload.</p>
-                        ) : (
-                            <p className="branding-panel__meta">No files selected.</p>
-                        )}
-
-                        <button type="submit" className="branding-panel__button" disabled={isUploadingBrandingSet}>
-                            {isUploadingBrandingSet ? "Uploading..." : "Upload Branding Set"}
+                    <div className="branding-panel__view-toggle" role="tablist" aria-label="Branding panel views">
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={brandingView === "active"}
+                            className={`branding-panel__view-button${brandingView === "active" ? " branding-panel__view-button--active" : ""}`}
+                            onClick={() => setBrandingView("active")}
+                        >
+                            Active Set
                         </button>
-                    </form>
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={brandingView === "upload"}
+                            className={`branding-panel__view-button${brandingView === "upload" ? " branding-panel__view-button--active" : ""}`}
+                            onClick={() => setBrandingView("upload")}
+                        >
+                            Upload
+                        </button>
+                    </div>
 
-                    <label htmlFor="active-branding-set" className="branding-panel__label">
-                        Active set for chat
-                    </label>
-                    <select
-                        id="active-branding-set"
-                        value={brandingSetId}
-                        onChange={(event) => setBrandingSetId(event.target.value)}
-                        className="branding-panel__select"
-                        disabled={isLoadingBrandingSets || isUploadingBrandingSet}
-                    >
-                        <option value="">None</option>
-                        {availableBrandingSets.map((identifier) => (
-                            <option key={identifier} value={identifier}>
-                                {identifier}
-                            </option>
-                        ))}
-                    </select>
+                    {brandingView === "upload" ? (
+                        <section className="branding-panel__section" aria-label="Upload branding set">
+                            <h3 className="branding-panel__section-title">Upload Branding Set</h3>
+                            <form className="branding-panel__upload-form" onSubmit={submitBrandingUpload}>
+                                <label htmlFor="branding-identifier" className="branding-panel__label">
+                                    Identifier
+                                </label>
+                                <input
+                                    id="branding-identifier"
+                                    type="text"
+                                    value={brandingIdentifier}
+                                    onChange={(event) => setBrandingIdentifier(event.target.value)}
+                                    placeholder="e.g. acme-launch-2026"
+                                    className="branding-panel__input"
+                                    disabled={isUploadingBrandingSet}
+                                />
 
-                    <button
-                        type="button"
-                        className="branding-panel__refresh-button"
-                        onClick={() => void loadBrandingSets()}
-                        disabled={isLoadingBrandingSets || isUploadingBrandingSet}
-                    >
-                        {isLoadingBrandingSets ? "Refreshing..." : "Refresh List"}
-                    </button>
+                                <label htmlFor="branding-files" className="branding-panel__label">
+                                    Files
+                                </label>
+                                <label
+                                    htmlFor="branding-files"
+                                    className={`branding-panel__dropzone${isBrandingDropActive ? " branding-panel__dropzone--active" : ""}`}
+                                    onDragOver={handleBrandingDragOver}
+                                    onDragLeave={handleBrandingDragLeave}
+                                    onDrop={handleBrandingDrop}
+                                    aria-disabled={isUploadingBrandingSet}
+                                >
+                                    <span className="branding-panel__dropzone-title">Drag and drop files here</span>
+                                    <span className="branding-panel__dropzone-subtitle">or click to choose files</span>
+                                </label>
+                                <input
+                                    ref={brandingFileInputRef}
+                                    id="branding-files"
+                                    type="file"
+                                    multiple
+                                    onChange={handleBrandingFileChange}
+                                    className="branding-panel__file-input branding-panel__file-input--hidden"
+                                    disabled={isUploadingBrandingSet}
+                                />
 
-                    {brandingStatus ? <p className="branding-panel__status">{brandingStatus}</p> : null}
+                                {brandingFiles.length ? (
+                                    <div className="branding-panel__file-chip-list">
+                                        <button
+                                            type="button"
+                                            className="branding-panel__clear-files-button"
+                                            onClick={clearBrandingFiles}
+                                            disabled={isUploadingBrandingSet}
+                                        >
+                                            Clear All
+                                        </button>
+                                        <FileChipList
+                                            files={brandingFiles}
+                                            isSubmitting={isUploadingBrandingSet}
+                                            onRemoveFile={(index) => {
+                                                setBrandingFiles((currentFiles) => currentFiles.filter((_, itemIndex) => itemIndex !== index));
+                                                if (brandingFileInputRef.current) {
+                                                    brandingFileInputRef.current.value = "";
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                ) : null}
+
+                                <button
+                                    type="submit"
+                                    className="branding-panel__button"
+                                    disabled={isUploadingBrandingSet || !canUploadBrandingSet}
+                                >
+                                    {isUploadingBrandingSet ? "Uploading..." : "Upload Branding Set"}
+                                </button>
+                            </form>
+                            {brandingStatus ? <p className="branding-panel__status">{brandingStatus}</p> : null}
+                        </section>
+                    ) : (
+                        <section className="branding-panel__section" aria-label="Active branding set for chat">
+                            <h3 className="branding-panel__section-title">Active Set For Chat</h3>
+                            <label htmlFor="active-branding-set" className="branding-panel__label">
+                                Selected set
+                            </label>
+                            <select
+                                id="active-branding-set"
+                                value={brandingSetId}
+                                onChange={(event) => setBrandingSetId(event.target.value)}
+                                className="branding-panel__select"
+                                disabled={isLoadingBrandingSets || isUploadingBrandingSet}
+                            >
+                                <option value="">None</option>
+                                {availableBrandingSets.map((identifier) => (
+                                    <option key={identifier} value={identifier}>
+                                        {identifier}
+                                    </option>
+                                ))}
+                            </select>
+
+                            <button
+                                type="button"
+                                className="branding-panel__refresh-button"
+                                onClick={() => void loadBrandingSets()}
+                                disabled={isLoadingBrandingSets || isUploadingBrandingSet}
+                            >
+                                {isLoadingBrandingSets ? "Refreshing..." : "Refresh List"}
+                            </button>
+                        </section>
+                    )}
+
                     {brandingError ? <p className="branding-panel__error">{brandingError}</p> : null}
                 </div>
             </aside>
