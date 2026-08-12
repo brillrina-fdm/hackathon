@@ -7,4 +7,4 @@ export type EndpointReq<E> = E extends Endpoint<infer T, unknown> ? T : never;
 
 export type EndpointRes<E> = E extends Endpoint<unknown, infer U> ? U : never;
 
-export type HomeEndpoint = Endpoint<void, { message: string }>;
+export type PingEndpoint = Endpoint<void, { message: "pong" }>;
