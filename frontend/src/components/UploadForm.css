@@ -118,6 +118,33 @@
     background: #64748b;
 }
 
+.upload-form__route-toggle {
+    display: inline-flex;
+    gap: 0.35rem;
+    margin: 0 0 0.7rem;
+    padding: 0.2rem;
+    border: 1px solid #334155;
+    border-radius: 999px;
+    background: #0f172a;
+}
+
+.upload-form__route-option {
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    color: #94a3b8;
+    padding: 0.28rem 0.8rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.upload-form__route-option--active {
+    background: #1e293b;
+    border-color: #3b82f6;
+    color: #e2e8f0;
+}
+
 .upload-form__file-item {
     display: inline-flex;
     align-items: center;
@@ -235,6 +262,27 @@
 
 .upload-form__error {
     color: #f87171;
+}
+
+.upload-form__result {
+    margin-top: 0.9rem;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    background: #0b1220;
+    padding: 0.75rem;
+}
+
+.upload-form__result-title {
+    margin: 0;
+    font-size: 0.95rem;
+    color: #e2e8f0;
+}
+
+.upload-form__result-meta {
+    margin: 0.4rem 0 0;
+    color: #94a3b8;
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
 }
 
 @media (max-width: 640px) {

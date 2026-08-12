@@ -6,12 +6,30 @@ type UploadFormProps = Readonly<{
     endpoint?: string;
 }>;
 
+type UploadResponse = {
+    runId: string;
+    routeType: "content" | "context";
+    inboxDir: string;
+    metadataPath: string;
+    requirementsPath: string;
+    convertedCount: number;
+    convertedFiles: Array<{
+        originalFileName: string;
+        pdfFileName: string;
+        sourceMimeType: string;
+        savedPath: string;
+    }>;
+    message: string;
+};
+
 function UploadForm({ endpoint = "/api/upload" }: UploadFormProps) {
     const [text, setText] = useState("");
+    const [routeType, setRouteType] = useState<"content" | "context">("content");
     const [files, setFiles] = useState<File[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [message, setMessage] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [queueResult, setQueueResult] = useState<UploadResponse | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -20,6 +38,7 @@ function UploadForm({ endpoint = "/api/upload" }: UploadFormProps) {
     const clearFiles = () => {
         setFiles([]);
         setMessage(null);
+        setError(null);
         if (fileInputRef.current) {
             fileInputRef.current.value = "";
         }
@@ -28,6 +47,7 @@ function UploadForm({ endpoint = "/api/upload" }: UploadFormProps) {
     const removeFile = (fileIndex: number) => {
         setFiles((currentFiles) => currentFiles.filter((_, index) => index !== fileIndex));
         setMessage(null);
+        setError(null);
         if (fileInputRef.current) {
             fileInputRef.current.value = "";
         }
@@ -67,10 +87,12 @@ function UploadForm({ endpoint = "/api/upload" }: UploadFormProps) {
         setIsSubmitting(true);
         setMessage(null);
         setError(null);
+        setQueueResult(null);
 
         try {
             const formData = new FormData();
             formData.append("text", trimmedText);
+            formData.append("routeType", routeType);
 
             files.forEach((file) => {
                 formData.append("files", file);
@@ -82,10 +104,23 @@ function UploadForm({ endpoint = "/api/upload" }: UploadFormProps) {
             });
 
             if (!response.ok) {
-                throw new Error(`Upload failed: ${response.status}`);
+                let errorMessage = `Upload failed: ${response.status}`;
+                try {
+                    const payload = (await response.json()) as { error?: string };
+                    if (payload.error) {
+                        errorMessage = payload.error;
+                    }
+                } catch {
+                    // Keep default error text when response is not JSON.
+                }
+
+                throw new Error(errorMessage);
             }
 
-            setMessage("Upload sent successfully.");
+            const payload = (await response.json()) as UploadResponse;
+            setQueueResult(payload);
+
+            setMessage(payload.message);
             setText("");
             clearFiles();
             inputRef.current?.focus();
@@ -147,6 +182,25 @@ function UploadForm({ endpoint = "/api/upload" }: UploadFormProps) {
                 Message
             </label>
 
+            <div className="upload-form__route-toggle" role="radiogroup" aria-label="Route type">
+                <button
+                    type="button"
+                    className={`upload-form__route-option${routeType === "content" ? " upload-form__route-option--active" : ""}`}
+                    onClick={() => setRouteType("content")}
+                    aria-pressed={routeType === "content"}
+                >
+                    Content
+                </button>
+                <button
+                    type="button"
+                    className={`upload-form__route-option${routeType === "context" ? " upload-form__route-option--active" : ""}`}
+                    onClick={() => setRouteType("context")}
+                    aria-pressed={routeType === "context"}
+                >
+                    Context
+                </button>
+            </div>
+
             <div className="upload-form__composer-row">
                 <label htmlFor="payload-files" className="upload-form__icon-button" aria-label="Attach files" title="Attach files">
                     <Paperclip className="upload-form__icon" aria-hidden="true" />
@@ -182,6 +236,19 @@ function UploadForm({ endpoint = "/api/upload" }: UploadFormProps) {
 
             {message ? <p className="upload-form__message">{message}</p> : null}
             {error ? <p className="upload-form__error">{error}</p> : null}
+
+            {queueResult ? (
+                <section className="upload-form__result" aria-live="polite">
+                    <h3 className="upload-form__result-title">Local Agent Queue</h3>
+                    <p className="upload-form__result-meta">Route: {queueResult.routeType}</p>
+                    <p className="upload-form__result-meta">Run ID: {queueResult.runId}</p>
+                    <p className="upload-form__result-meta">Inbox: {queueResult.inboxDir}</p>
+                    <p className="upload-form__result-meta">Metadata: {queueResult.metadataPath}</p>
+                    <p className="upload-form__result-meta">
+                        PDFs saved: {queueResult.convertedFiles.map((file) => file.pdfFileName).join(", ")}
+                    </p>
+                </section>
+            ) : null}
         </form>
     );
 }
