@@ -1,4 +1,4 @@
-import express, { type Express, type Request, type Response } from "express";
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -7,6 +7,7 @@ import {
     ApiRoutes,
     type ChatAttachmentFile,
     type ChatEndpoint,
+    type EndpointReq,
     type EndpointRes,
     type ListBrandingSetsEndpoint,
     type PingEndpoint,
@@ -22,12 +23,14 @@ const IN_ROOT = path.join(AI_FILES_ROOT, "in");
 const BRAND_ROOT = path.join(AI_FILES_ROOT, "brand");
 const OUT_ROOT = path.join(AI_FILES_ROOT, "out");
 const BRANDING_IDENTIFIER_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
+const BRANDING_UPLOAD_MAX_FILES = 1000;
+const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
 
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
-        files: 25,
-        fileSize: 15 * 1024 * 1024,
+        files: BRANDING_UPLOAD_MAX_FILES,
+        fileSize: MAX_FILE_SIZE_BYTES,
     },
 });
 
@@ -44,13 +47,22 @@ const normalizeBrandingIdentifier = (value: unknown): string | null => {
     return normalized;
 };
 
-const sanitizeFileName = (value: string): string => {
-    const baseName = path.basename(value).replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_+/g, "_");
-    if (baseName.length) {
-        return baseName;
+const sanitizePathSegment = (value: string): string => value.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_+/g, "_");
+
+const sanitizeRelativeUploadPath = (value: string): string => {
+    const normalizedPath = value.replaceAll("\\", "/");
+    const parts = normalizedPath
+        .split("/")
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0 && part !== "." && part !== "..")
+        .map((part) => sanitizePathSegment(part))
+        .filter((part) => part.length > 0);
+
+    if (!parts.length) {
+        return `file-${Date.now()}`;
     }
 
-    return `file-${Date.now()}`;
+    return path.join(...parts);
 };
 
 const createRunId = () => `${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
@@ -63,25 +75,43 @@ const ensureStorageRoots = async () => {
     ]);
 };
 
-const resolveUniqueFilePath = async (dirPath: string, originalName: string) => {
-    const extension = path.extname(originalName);
-    const nameWithoutExtension = path.basename(originalName, extension) || "file";
+const resolveUniqueFilePath = async (baseDirPath: string, originalName: string) => {
+    const sanitizedRelativePath = sanitizeRelativeUploadPath(originalName);
+    const extension = path.extname(sanitizedRelativePath);
+    const nameWithoutExtension = path.basename(sanitizedRelativePath, extension) || "file";
+    const relativeDirectory = path.dirname(sanitizedRelativePath);
+    const targetDirectory = relativeDirectory === "." ? baseDirPath : path.join(baseDirPath, relativeDirectory);
+
+    await fs.mkdir(targetDirectory, { recursive: true });
 
     let sequence = 0;
     while (true) {
         const fileName = sequence === 0 ? `${nameWithoutExtension}${extension}` : `${nameWithoutExtension}-${sequence}${extension}`;
-        const filePath = path.join(dirPath, fileName);
+        const filePath = path.join(targetDirectory, fileName);
+        const relativeFilePath = relativeDirectory === "." ? fileName : path.join(relativeDirectory, fileName);
 
         try {
             await fs.access(filePath);
             sequence += 1;
         } catch {
             return {
-                fileName,
                 filePath,
+                relativeFilePath,
             };
         }
     }
+};
+
+const normalizeRelativePathsField = (value: unknown): string[] => {
+    if (typeof value === "string") {
+        return [value];
+    }
+
+    if (Array.isArray(value)) {
+        return value.filter((item): item is string => typeof item === "string");
+    }
+
+    return [];
 };
 
 app.get(ApiRoutes.brandingSets, async (req: Request, res: Response<EndpointRes<ListBrandingSetsEndpoint>>) => {
@@ -99,63 +129,71 @@ app.get(ApiRoutes.brandingSets, async (req: Request, res: Response<EndpointRes<L
     }
 });
 
-app.post(ApiRoutes.brandingSets, upload.array("files", 25), async (req: Request, res: Response<EndpointRes<UploadBrandingSetEndpoint>>) => {
-    const identifier = normalizeBrandingIdentifier(req.body.identifier);
-    if (!identifier) {
-        res.status(400).json({
-            error: "Invalid identifier. Use lowercase letters, numbers, and hyphens only (max 64 chars).",
-        });
-        return;
-    }
+app.post(
+    ApiRoutes.brandingSets,
+    upload.array("files", BRANDING_UPLOAD_MAX_FILES),
+    async (
+        req: Request<unknown, EndpointRes<UploadBrandingSetEndpoint>, EndpointReq<UploadBrandingSetEndpoint>>,
+        res: Response<EndpointRes<UploadBrandingSetEndpoint>>,
+    ) => {
+        const identifier = normalizeBrandingIdentifier(req.body.identifier);
+        if (!identifier) {
+            res.status(400).json({
+                error: "Invalid identifier. Use lowercase letters, numbers, and hyphens only (max 64 chars).",
+            });
+            return;
+        }
 
-    const incomingFiles = (req.files as Express.Multer.File[] | undefined) ?? [];
-    if (!incomingFiles.length) {
-        res.status(400).json({ error: "Please include at least one file." });
-        return;
-    }
-
-    try {
-        await ensureStorageRoots();
-
-        const runId = createRunId();
-        const targetDirectory = path.join(IN_ROOT, identifier, runId);
-        const brandDirectory = path.join(BRAND_ROOT, identifier);
-        const rulesFilePath = path.join(brandDirectory, "rules.md");
-
-        await Promise.all([fs.mkdir(targetDirectory, { recursive: true }), fs.mkdir(brandDirectory, { recursive: true })]);
-
-        const savedFiles: string[] = [];
-        for (const file of incomingFiles) {
-            const sanitizedName = sanitizeFileName(file.originalname);
-            const target = await resolveUniqueFilePath(targetDirectory, sanitizedName);
-            await fs.writeFile(target.filePath, file.buffer);
-            savedFiles.push(target.fileName);
+        const incomingFiles = (req.files as Express.Multer.File[] | undefined) ?? [];
+        if (!incomingFiles.length) {
+            res.status(400).json({ error: "Please include at least one file." });
+            return;
         }
 
         try {
-            await fs.access(rulesFilePath);
+            await ensureStorageRoots();
+
+            const runId = createRunId();
+            const targetDirectory = path.join(IN_ROOT, identifier, runId);
+            const brandDirectory = path.join(BRAND_ROOT, identifier);
+            const rulesFilePath = path.join(brandDirectory, "rules.md");
+            const relativePaths = normalizeRelativePathsField(req.body?.relativePaths);
+
+            await Promise.all([fs.mkdir(targetDirectory, { recursive: true }), fs.mkdir(brandDirectory, { recursive: true })]);
+
+            const savedFiles: string[] = [];
+            for (const [index, file] of incomingFiles.entries()) {
+                const hintedRelativePath = relativePaths[index] || file.originalname;
+                const target = await resolveUniqueFilePath(targetDirectory, hintedRelativePath);
+                await fs.writeFile(target.filePath, file.buffer);
+                savedFiles.push(target.relativeFilePath.split(path.sep).join("/"));
+            }
+
+            try {
+                await fs.access(rulesFilePath);
+            } catch {
+                const starterRules = [
+                    `# Rules for ${identifier}`,
+                    "",
+                    "This file is generated after initial brand package upload.",
+                    "Update this file with company-specific style and content rules.",
+                    "",
+                    `Created: ${new Date().toISOString()}`,
+                ].join("\n");
+
+                await fs.writeFile(rulesFilePath, starterRules, "utf8");
+            }
+
+            res.status(201).json({
+                identifier,
+                fileCount: savedFiles.length,
+                files: savedFiles,
+            });
         } catch {
-            const starterRules = [
-                `# Rules for ${identifier}`,
-                "",
-                "This file is generated after initial brand package upload.",
-                "Update this file with company-specific style and content rules.",
-                "",
-                `Created: ${new Date().toISOString()}`,
-            ].join("\n");
-
-            await fs.writeFile(rulesFilePath, starterRules, "utf8");
+            res.status(500).json({ error: "Unable to store branding files." });
         }
-
-        res.status(201).json({
-            identifier,
-            fileCount: savedFiles.length,
-            files: savedFiles,
-        });
-    } catch {
-        res.status(500).json({ error: "Unable to store branding files." });
-    }
-});
+    },
+);
 
 app.get("/api/branding-sets/:identifier/rules", async (req: Request, res: Response) => {
     const identifier = normalizeBrandingIdentifier(req.params.identifier);
@@ -313,6 +351,29 @@ app.get("/api/out/:company/:fileName", async (req: Request, res: Response) => {
 app.get(ApiRoutes.ping, (req: Request, res: Response<EndpointRes<PingEndpoint>>) => {
     const body: EndpointRes<PingEndpoint> = { message: "pong" };
     res.json(body);
+});
+
+app.use((error: unknown, req: Request, res: Response, next: NextFunction) => {
+    if (error instanceof multer.MulterError) {
+        if (error.code === "LIMIT_FILE_COUNT") {
+            res.status(400).json({
+                error: `Too many files. Branding uploads support up to ${BRANDING_UPLOAD_MAX_FILES} files per request.`,
+            });
+            return;
+        }
+
+        if (error.code === "LIMIT_FILE_SIZE") {
+            res.status(400).json({
+                error: `A file exceeds the size limit of ${Math.floor(MAX_FILE_SIZE_BYTES / (1024 * 1024))}MB.`,
+            });
+            return;
+        }
+
+        res.status(400).json({ error: "Upload failed. Please check files and try again." });
+        return;
+    }
+
+    next(error);
 });
 
 app.listen(3000);

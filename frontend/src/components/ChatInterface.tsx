@@ -16,6 +16,76 @@ type ChatInterfaceProps = Readonly<{
     pingEndpoint?: string;
 }>;
 
+type WebkitEntry = {
+    isFile: boolean;
+    isDirectory: boolean;
+};
+
+type WebkitFileEntry = WebkitEntry & {
+    file: (callback: (file: File) => void, errorCallback?: (error: DOMException) => void) => void;
+};
+
+type WebkitDirectoryEntry = WebkitEntry & {
+    createReader: () => {
+        readEntries: (callback: (entries: WebkitEntry[]) => void, errorCallback?: (error: DOMException) => void) => void;
+    };
+};
+
+type DataTransferItemWithWebkit = DataTransferItem & {
+    webkitGetAsEntry?: () => WebkitEntry | null;
+};
+
+const readDirectoryEntries = async (entry: WebkitDirectoryEntry): Promise<WebkitEntry[]> => {
+    const reader = entry.createReader();
+    const allEntries: WebkitEntry[] = [];
+
+    while (true) {
+        const batch = await new Promise<WebkitEntry[]>((resolve, reject) => {
+            reader.readEntries(resolve, reject);
+        });
+
+        if (!batch.length) {
+            break;
+        }
+
+        allEntries.push(...batch);
+    }
+
+    return allEntries;
+};
+
+const readFilesFromEntry = async (entry: WebkitEntry): Promise<File[]> => {
+    if (entry.isFile) {
+        return new Promise<File[]>((resolve, reject) => {
+            (entry as WebkitFileEntry).file(
+                (file) => resolve([file]),
+                () => reject(new Error("Unable to read dropped file")),
+            );
+        });
+    }
+
+    if (entry.isDirectory) {
+        const children = await readDirectoryEntries(entry as WebkitDirectoryEntry);
+        const nestedFiles = await Promise.all(children.map((child) => readFilesFromEntry(child)));
+        return nestedFiles.flat();
+    }
+
+    return [];
+};
+
+const readFilesFromDrop = async (event: ReactDragEvent<HTMLLabelElement>): Promise<File[]> => {
+    const itemEntries = Array.from(event.dataTransfer.items || [])
+        .map((item) => (item as DataTransferItemWithWebkit).webkitGetAsEntry?.())
+        .filter((entry): entry is WebkitEntry => Boolean(entry));
+
+    if (itemEntries.length) {
+        const filesByEntry = await Promise.all(itemEntries.map((entry) => readFilesFromEntry(entry)));
+        return filesByEntry.flat();
+    }
+
+    return Array.from(event.dataTransfer.files || []);
+};
+
 function ChatInterface({ pingEndpoint = ApiRoutes.ping }: ChatInterfaceProps) {
     const [brandingView, setBrandingView] = useState<"upload" | "active">("active");
     const [text, setText] = useState("");
@@ -38,7 +108,7 @@ function ChatInterface({ pingEndpoint = ApiRoutes.ping }: ChatInterfaceProps) {
     const inputRef = useRef<HTMLTextAreaElement | null>(null);
     const listRef = useRef<HTMLDivElement | null>(null);
 
-    const getFileKey = (file: File) => `${file.name}-${file.size}-${file.lastModified}`;
+    const getFileKey = (file: File) => `${file.webkitRelativePath || file.name}-${file.size}-${file.lastModified}`;
     const brandingIdentifierPattern = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 
     const normalizeBrandingIdentifier = (identifier: string): string | null => {
@@ -121,6 +191,15 @@ function ChatInterface({ pingEndpoint = ApiRoutes.ping }: ChatInterfaceProps) {
         void loadBrandingSets();
     }, []);
 
+    useEffect(() => {
+        if (!brandingFileInputRef.current) {
+            return;
+        }
+
+        brandingFileInputRef.current.setAttribute("webkitdirectory", "");
+        brandingFileInputRef.current.setAttribute("directory", "");
+    }, []);
+
     const clearFiles = () => {
         setFiles([]);
         if (fileInputRef.current) {
@@ -197,7 +276,7 @@ function ChatInterface({ pingEndpoint = ApiRoutes.ping }: ChatInterfaceProps) {
         setIsBrandingDropActive(false);
     };
 
-    const handleBrandingDrop = (event: ReactDragEvent<HTMLLabelElement>) => {
+    const handleBrandingDrop = async (event: ReactDragEvent<HTMLLabelElement>) => {
         event.preventDefault();
         setIsBrandingDropActive(false);
 
@@ -205,7 +284,7 @@ function ChatInterface({ pingEndpoint = ApiRoutes.ping }: ChatInterfaceProps) {
             return;
         }
 
-        const droppedFiles = Array.from(event.dataTransfer.files ?? []);
+        const droppedFiles = await readFilesFromDrop(event);
         if (!droppedFiles.length) {
             return;
         }
@@ -255,6 +334,7 @@ function ChatInterface({ pingEndpoint = ApiRoutes.ping }: ChatInterfaceProps) {
             formData.append("identifier", normalizedIdentifier);
             for (const file of brandingFiles) {
                 formData.append("files", file);
+                formData.append("relativePaths", file.webkitRelativePath || file.name);
             }
 
             const response = await fetch(ApiRoutes.brandingSets, {
