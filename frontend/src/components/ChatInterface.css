@@ -223,9 +223,9 @@
 }
 
 .upload-form__message-bubble--user .upload-form__attachment-list li {
-    border-color: #141414;
-    background: #141414;
-    color: #f1f1f1;
+    border-color: color-mix(in srgb, var(--highlight) 65%, #ffffff);
+    background: color-mix(in srgb, var(--highlight) 35%, #ffffff);
+    color: #101010;
 }
 
 .upload-form__message-bubble--assistant .upload-form__attachment-list li {
