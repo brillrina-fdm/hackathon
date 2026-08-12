@@ -2,7 +2,16 @@ import express, { type Express, type Request, type Response } from "express";
 import multer from "multer";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { type EndpointRes, type PingEndpoint } from "shared";
+import {
+    ApiRoutes,
+    type ChatAttachmentFile,
+    type ChatEndpoint,
+    type EndpointReq,
+    type EndpointRes,
+    type ListBrandingSetsEndpoint,
+    type PingEndpoint,
+    type UploadBrandingSetEndpoint,
+} from "shared";
 
 const app: Express = express();
 app.disable("x-powered-by");
@@ -66,7 +75,7 @@ const resolveUniqueFilePath = async (dirPath: string, originalName: string) => {
     }
 };
 
-app.get("/api/branding-sets", async (req: Request, res: Response) => {
+app.get(ApiRoutes.brandingSets, async (req: Request, res: Response<EndpointRes<ListBrandingSetsEndpoint>>) => {
     try {
         await ensureBrandingRoot();
         const entries = await fs.readdir(BRANDING_ROOT, { withFileTypes: true });
@@ -81,70 +90,89 @@ app.get("/api/branding-sets", async (req: Request, res: Response) => {
     }
 });
 
-app.post("/api/branding-sets", upload.array("files", 25), async (req: Request, res: Response) => {
-    const identifier = normalizeBrandingIdentifier(req.body.identifier);
-    if (!identifier) {
-        res.status(400).json({
-            error: "Invalid identifier. Use lowercase letters, numbers, and hyphens only (max 64 chars).",
-        });
-        return;
-    }
-
-    const incomingFiles = (req.files as Express.Multer.File[] | undefined) ?? [];
-    if (!incomingFiles.length) {
-        res.status(400).json({ error: "Please include at least one file." });
-        return;
-    }
-
-    try {
-        await ensureBrandingRoot();
-        const targetDirectory = path.join(BRANDING_ROOT, identifier);
-        await fs.mkdir(targetDirectory, { recursive: true });
-
-        const savedFiles: string[] = [];
-        for (const file of incomingFiles) {
-            const sanitizedName = sanitizeFileName(file.originalname);
-            const target = await resolveUniqueFilePath(targetDirectory, sanitizedName);
-            await fs.writeFile(target.filePath, file.buffer);
-            savedFiles.push(target.fileName);
+app.post(
+    ApiRoutes.brandingSets,
+    upload.array("files", 25),
+    async (
+        req: Request<unknown, EndpointRes<UploadBrandingSetEndpoint>, EndpointReq<UploadBrandingSetEndpoint>>,
+        res: Response<EndpointRes<UploadBrandingSetEndpoint>>,
+    ) => {
+        const identifier = normalizeBrandingIdentifier(req.body.identifier);
+        if (!identifier) {
+            res.status(400).json({
+                error: "Invalid identifier. Use lowercase letters, numbers, and hyphens only (max 64 chars).",
+            });
+            return;
         }
 
-        res.status(201).json({
-            identifier,
-            fileCount: savedFiles.length,
-            files: savedFiles,
+        const incomingFiles = (req.files as Express.Multer.File[] | undefined) ?? [];
+        if (!incomingFiles.length) {
+            res.status(400).json({ error: "Please include at least one file." });
+            return;
+        }
+
+        try {
+            await ensureBrandingRoot();
+            const targetDirectory = path.join(BRANDING_ROOT, identifier);
+            await fs.mkdir(targetDirectory, { recursive: true });
+
+            const savedFiles: string[] = [];
+            for (const file of incomingFiles) {
+                const sanitizedName = sanitizeFileName(file.originalname);
+                const target = await resolveUniqueFilePath(targetDirectory, sanitizedName);
+                await fs.writeFile(target.filePath, file.buffer);
+                savedFiles.push(target.fileName);
+            }
+
+            res.status(201).json({
+                identifier,
+                fileCount: savedFiles.length,
+                files: savedFiles,
+            });
+        } catch {
+            res.status(500).json({ error: "Unable to store branding files." });
+        }
+    },
+);
+
+app.post(
+    ApiRoutes.chat,
+    upload.array("files", 25),
+    (req: Request<unknown, EndpointRes<ChatEndpoint>, EndpointReq<ChatEndpoint>>, res: Response<EndpointRes<ChatEndpoint>>) => {
+        const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+        if (!message) {
+            res.status(400).json({ error: "Message is required." });
+            return;
+        }
+
+        const hasBrandingSetId = typeof req.body?.brandingSetId === "string" && req.body.brandingSetId.trim().length > 0;
+        const brandingSetId = hasBrandingSetId ? normalizeBrandingIdentifier(req.body.brandingSetId) : null;
+
+        if (hasBrandingSetId && !brandingSetId) {
+            res.status(400).json({ error: "Invalid brandingSetId format." });
+            return;
+        }
+
+        const receivedFiles: ChatAttachmentFile[] = ((req.files as Express.Multer.File[] | undefined) ?? []).map((file) => ({
+            name: file.originalname,
+            size: file.size,
+            mimeType: file.mimetype,
+        }));
+
+        const fileSummary = receivedFiles.length > 0 ? ` and ${receivedFiles.length} attachment(s)` : "";
+        const assistantMessage = brandingSetId
+            ? `Message received using branding set '${brandingSetId}'${fileSummary}.`
+            : `Message received${fileSummary}.`;
+
+        res.json({
+            message: assistantMessage,
+            brandingSetId,
+            receivedFiles,
         });
-    } catch {
-        res.status(500).json({ error: "Unable to store branding files." });
-    }
-});
+    },
+);
 
-app.post("/api/chat", (req: Request, res: Response) => {
-    const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
-    if (!message) {
-        res.status(400).json({ error: "Message is required." });
-        return;
-    }
-
-    const hasBrandingSetId = typeof req.body?.brandingSetId === "string" && req.body.brandingSetId.trim().length > 0;
-    const brandingSetId = hasBrandingSetId ? normalizeBrandingIdentifier(req.body.brandingSetId) : null;
-
-    if (hasBrandingSetId && !brandingSetId) {
-        res.status(400).json({ error: "Invalid brandingSetId format." });
-        return;
-    }
-
-    const assistantMessage = brandingSetId
-        ? `Message received using branding set '${brandingSetId}'.`
-        : "Message received without a branding set.";
-
-    res.json({
-        message: assistantMessage,
-        brandingSetId,
-    });
-});
-
-app.get("/ping", (req: Request, res: Response) => {
+app.get(ApiRoutes.ping, (req: Request, res: Response) => {
     const body: EndpointRes<PingEndpoint> = { message: "pong" };
     res.json(body);
 });
