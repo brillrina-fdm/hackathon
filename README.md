@@ -1,1 +1,1 @@
-# hackathon-boilerplate
+# hackathon
