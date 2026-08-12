@@ -298,7 +298,7 @@
 
 .upload-form__composer-row {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     gap: 0.5rem;
     width: 100%;
     border: 1px solid #3a3a3a;
@@ -345,10 +345,15 @@
 .upload-form__button {
     height: 2rem;
     width: 2rem;
+    min-height: 2rem;
+    min-width: 2rem;
+    padding: 0;
+    line-height: 1;
     border-radius: 999px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
 }
 
 .upload-form__icon-button {
@@ -356,7 +361,6 @@
     background: #1b1b1b;
     color: #e5e5e5;
     cursor: pointer;
-    flex-shrink: 0;
 }
 
 .upload-form__button {
