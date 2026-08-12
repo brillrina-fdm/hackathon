@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import ChatComposer from "@/components/chat/ChatComposer";
 import ChatMessageList from "@/components/chat/ChatMessageList";
 import FileChipList from "@/components/chat/FileChipList";
+import { ApiRoutes } from "shared";
 import {
     type BrandingSetListResponse,
     type BrandingSetUploadResponse,
@@ -15,7 +16,7 @@ type ChatInterfaceProps = Readonly<{
     pingEndpoint?: string;
 }>;
 
-function ChatInterface({ pingEndpoint = "/ping" }: ChatInterfaceProps) {
+function ChatInterface({ pingEndpoint = ApiRoutes.ping }: ChatInterfaceProps) {
     const [text, setText] = useState("");
     const [files, setFiles] = useState<File[]>([]);
     const [brandingFiles, setBrandingFiles] = useState<File[]>([]);
@@ -51,7 +52,7 @@ function ChatInterface({ pingEndpoint = "/ping" }: ChatInterfaceProps) {
         setIsLoadingBrandingSets(true);
 
         try {
-            const response = await fetch("/api/branding-sets");
+            const response = await fetch(ApiRoutes.brandingSets);
             if (!response.ok) {
                 throw new Error(`Unable to load branding sets (${response.status})`);
             }
@@ -207,7 +208,7 @@ function ChatInterface({ pingEndpoint = "/ping" }: ChatInterfaceProps) {
                 formData.append("files", file);
             }
 
-            const response = await fetch("/api/branding-sets", {
+            const response = await fetch(ApiRoutes.brandingSets, {
                 method: "POST",
                 body: formData,
             });
@@ -259,15 +260,19 @@ function ChatInterface({ pingEndpoint = "/ping" }: ChatInterfaceProps) {
         clearFiles();
 
         try {
-            const response = await fetch("/api/chat", {
+            const formData = new FormData();
+            formData.append("message", trimmedText || "[Attachment sent]");
+            if (brandingSetId) {
+                formData.append("brandingSetId", brandingSetId);
+            }
+
+            for (const file of files) {
+                formData.append("files", file);
+            }
+
+            const response = await fetch(ApiRoutes.chat, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    message: trimmedText || "[Attachment sent]",
-                    brandingSetId: brandingSetId || undefined,
-                }),
+                body: formData,
             });
 
             const payload = (await response.json()) as ChatApiResponse;

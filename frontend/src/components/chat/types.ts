@@ -1,3 +1,5 @@
+import type { ChatEndpoint, EndpointRes, ListBrandingSetsEndpoint, PingEndpoint, UploadBrandingSetEndpoint } from "shared";
+
 export type ChatRole = "status" | "user" | "assistant";
 
 export type ChatAttachment = {
@@ -12,24 +14,10 @@ export type ChatMessage = {
     attachments?: ChatAttachment[];
 };
 
-export type PingResponse = {
-    message?: string;
-};
+export type PingResponse = EndpointRes<PingEndpoint>;
 
-export type BrandingSetListResponse = {
-    items?: string[];
-    error?: string;
-};
+export type BrandingSetListResponse = EndpointRes<ListBrandingSetsEndpoint>;
 
-export type BrandingSetUploadResponse = {
-    identifier?: string;
-    fileCount?: number;
-    files?: string[];
-    error?: string;
-};
+export type BrandingSetUploadResponse = EndpointRes<UploadBrandingSetEndpoint>;
 
-export type ChatApiResponse = {
-    message?: string;
-    brandingSetId?: string | null;
-    error?: string;
-};
+export type ChatApiResponse = EndpointRes<ChatEndpoint>;

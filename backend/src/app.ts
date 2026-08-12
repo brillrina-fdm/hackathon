@@ -1,9 +1,17 @@
 import express, { type Express, type Request, type Response } from "express";
 import multer from "multer";
-import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { promises as fs } from "node:fs";
 import path from "node:path";
-import { type EndpointRes, type PingEndpoint } from "shared";
+import {
+    ApiRoutes,
+    type ChatAttachmentFile,
+    type ChatEndpoint,
+    type EndpointRes,
+    type ListBrandingSetsEndpoint,
+    type PingEndpoint,
+    type UploadBrandingSetEndpoint,
+} from "shared";
 
 const app: Express = express();
 app.disable("x-powered-by");
@@ -76,7 +84,7 @@ const resolveUniqueFilePath = async (dirPath: string, originalName: string) => {
     }
 };
 
-app.get("/api/branding-sets", async (req: Request, res: Response) => {
+app.get(ApiRoutes.brandingSets, async (req: Request, res: Response<EndpointRes<ListBrandingSetsEndpoint>>) => {
     try {
         await ensureStorageRoots();
         const entries = await fs.readdir(BRAND_ROOT, { withFileTypes: true });
@@ -86,12 +94,12 @@ app.get("/api/branding-sets", async (req: Request, res: Response) => {
             .sort((left, right) => left.localeCompare(right));
 
         res.json({ items: identifiers });
-    } catch (error) {
+    } catch {
         res.status(500).json({ error: "Unable to list branding sets" });
     }
 });
 
-app.post("/api/branding-sets", upload.array("files", 25), async (req: Request, res: Response) => {
+app.post(ApiRoutes.brandingSets, upload.array("files", 25), async (req: Request, res: Response<EndpointRes<UploadBrandingSetEndpoint>>) => {
     const identifier = normalizeBrandingIdentifier(req.body.identifier);
     if (!identifier) {
         res.status(400).json({
@@ -108,6 +116,7 @@ app.post("/api/branding-sets", upload.array("files", 25), async (req: Request, r
 
     try {
         await ensureStorageRoots();
+
         const runId = createRunId();
         const targetDirectory = path.join(IN_ROOT, identifier, runId);
         const brandDirectory = path.join(BRAND_ROOT, identifier);
@@ -142,9 +151,6 @@ app.post("/api/branding-sets", upload.array("files", 25), async (req: Request, r
             identifier,
             fileCount: savedFiles.length,
             files: savedFiles,
-            runId,
-            inFolder: targetDirectory,
-            rulesFile: rulesFilePath,
         });
     } catch {
         res.status(500).json({ error: "Unable to store branding files." });
@@ -195,7 +201,7 @@ app.put("/api/branding-sets/:identifier/rules", async (req: Request, res: Respon
     }
 });
 
-app.post("/api/chat", async (req: Request, res: Response) => {
+app.post(ApiRoutes.chat, async (req: Request, res: Response<EndpointRes<ChatEndpoint>>) => {
     const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
     if (!message) {
         res.status(400).json({ error: "Message is required." });
@@ -209,6 +215,18 @@ app.post("/api/chat", async (req: Request, res: Response) => {
         res.status(400).json({ error: "Invalid brandingSetId format." });
         return;
     }
+
+    const receivedFiles: ChatAttachmentFile[] = Array.isArray(req.body?.files)
+        ? req.body.files
+              .filter((file: unknown): file is ChatAttachmentFile => {
+                  const value = file as { name?: unknown; size?: unknown; mimeType?: unknown };
+                  return (
+                      typeof value?.name === "string" &&
+                      typeof value?.size === "number" &&
+                      typeof value?.mimeType === "string"
+                  );
+              })
+        : [];
 
     try {
         await ensureStorageRoots();
@@ -231,10 +249,11 @@ app.post("/api/chat", async (req: Request, res: Response) => {
         }
 
         const outputContent = [
-            `# Generated Output`,
+            "# Generated Output",
             "",
             `Created: ${new Date().toISOString()}`,
             `Branding Set: ${brandingSetId ?? "none"}`,
+            `Attachments: ${receivedFiles.length}`,
             "",
             "## User Request",
             message,
@@ -258,11 +277,7 @@ app.post("/api/chat", async (req: Request, res: Response) => {
         res.json({
             message: assistantMessage,
             brandingSetId,
-            outputFile: {
-                fileName: outputFileName,
-                path: outputFilePath,
-                downloadUrl,
-            },
+            receivedFiles,
         });
     } catch {
         res.status(500).json({ error: "Unable to generate output file." });
@@ -270,7 +285,9 @@ app.post("/api/chat", async (req: Request, res: Response) => {
 });
 
 app.get("/api/out/:company/:fileName", async (req: Request, res: Response) => {
-    const company = normalizeBrandingIdentifier(req.params.company) ?? (req.params.company === "general" ? "general" : null);
+    const companyParam = typeof req.params.company === "string" ? req.params.company : "";
+    const company = normalizeBrandingIdentifier(companyParam) ?? (companyParam === "general" ? "general" : null);
+
     if (!company) {
         res.status(400).json({ error: "Invalid company path." });
         return;
@@ -293,7 +310,7 @@ app.get("/api/out/:company/:fileName", async (req: Request, res: Response) => {
     }
 });
 
-app.get("/ping", (req: Request, res: Response) => {
+app.get(ApiRoutes.ping, (req: Request, res: Response<EndpointRes<PingEndpoint>>) => {
     const body: EndpointRes<PingEndpoint> = { message: "pong" };
     res.json(body);
 });
