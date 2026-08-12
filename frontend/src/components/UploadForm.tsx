@@ -6,12 +6,13 @@ type UploadFormProps = Readonly<{
     endpoint?: string;
 }>;
 
-function UploadForm({ endpoint = "/api/upload" }: UploadFormProps) {
+function UploadForm({ endpoint = "/api/agent/chat-upload" }: UploadFormProps) {
     const [text, setText] = useState("");
     const [files, setFiles] = useState<File[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [message, setMessage] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [conversationId, setConversationId] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -70,7 +71,11 @@ function UploadForm({ endpoint = "/api/upload" }: UploadFormProps) {
 
         try {
             const formData = new FormData();
-            formData.append("text", trimmedText);
+            formData.append("message", trimmedText);
+
+            if (conversationId) {
+                formData.append("conversationId", conversationId);
+            }
 
             files.forEach((file) => {
                 formData.append("files", file);
@@ -81,11 +86,19 @@ function UploadForm({ endpoint = "/api/upload" }: UploadFormProps) {
                 body: formData,
             });
 
+            const payload = (await response.json().catch(() => null)) as
+                | { output?: string; error?: string; conversationId?: string }
+                | null;
+
             if (!response.ok) {
-                throw new Error(`Upload failed: ${response.status}`);
+                const errorMessage = payload?.error ?? `Upload failed: ${response.status}`;
+                throw new Error(errorMessage);
             }
 
-            setMessage("Upload sent successfully.");
+            setMessage(payload?.output ?? "Sent successfully.");
+            if (payload?.conversationId) {
+                setConversationId(payload.conversationId);
+            }
             setText("");
             clearFiles();
             inputRef.current?.focus();

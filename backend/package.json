@@ -12,11 +12,16 @@
         "format": "prettier . --write"
     },
     "dependencies": {
+        "@azure/ai-projects": "^2.4.0",
+        "@azure/identity": "^4.13.1",
+        "dotenv": "^17.4.2",
         "express": "^5.2.1",
+        "multer": "^2.2.0",
         "shared": "file:../shared"
     },
     "devDependencies": {
         "@types/express": "^5.0.6",
+        "@types/multer": "^2.2.0",
         "@types/node": "^26.2.0",
         "prettier": "3.9.6",
         "typescript": "^7.0.2"
