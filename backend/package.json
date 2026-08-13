@@ -1,26 +1,26 @@
-{
-    "name": "backend",
-    "version": "1.0.0",
-    "description": "",
-    "license": "ISC",
-    "author": "",
-    "type": "module",
-    "main": "app.ts",
-    "scripts": {
-        "dev": "node --watch src/app.ts",
-        "test": "echo \"Error: no test specified\" && exit 1",
-        "format": "prettier . --write"
-    },
-    "dependencies": {
-        "@types/multer": "^2.2.0",
-        "express": "^5.2.1",
-        "multer": "^2.2.0",
-        "shared": "file:../shared"
-    },
-    "devDependencies": {
-        "@types/express": "^5.0.6",
-        "@types/node": "^26.2.0",
-        "prettier": "3.9.6",
-        "typescript": "^7.0.2"
-    }
+﻿{
+    "name":  "backend",
+    "version":  "1.0.0",
+    "description":  "",
+    "license":  "ISC",
+    "author":  "",
+    "type":  "module",
+    "main":  "app.ts",
+    "scripts":  {
+                    "dev":  "node --env-file=.env --watch src/app.ts",
+                    "test":  "echo \"Error: no test specified\" \u0026\u0026 exit 1",
+                    "format":  "prettier . --write"
+                },
+    "dependencies":  {
+                         "@types/multer":  "^2.2.0",
+                         "express":  "^5.2.1",
+                         "multer":  "^2.2.0",
+                         "shared":  "file:../shared"
+                     },
+    "devDependencies":  {
+                            "@types/express":  "^5.0.6",
+                            "@types/node":  "^26.2.0",
+                            "prettier":  "3.9.6",
+                            "typescript":  "^7.0.2"
+                        }
 }

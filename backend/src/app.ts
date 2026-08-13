@@ -1,8 +1,9 @@
-import express, { type Express, type Request, type Response } from "express";
+﻿import express, { type Express, type Request, type Response } from "express";
 import multer from "multer";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { generateArtifactOutput, generateBrandRules } from "./services/agentOrchestrator.ts";
 import {
     ApiRoutes,
     type ChatAttachmentFile,
@@ -132,28 +133,20 @@ app.post(ApiRoutes.brandingSets, upload.array("files", 25), async (req: Request,
             savedFiles.push(target.fileName);
         }
 
-        try {
-            await fs.access(rulesFilePath);
-        } catch {
-            const starterRules = [
-                `# Rules for ${identifier}`,
-                "",
-                "This file is generated after initial brand package upload.",
-                "Update this file with company-specific style and content rules.",
-                "",
-                `Created: ${new Date().toISOString()}`,
-            ].join("\n");
-
-            await fs.writeFile(rulesFilePath, starterRules, "utf8");
-        }
+        await generateBrandRules(identifier, targetDirectory, rulesFilePath, savedFiles);
 
         res.status(201).json({
             identifier,
             fileCount: savedFiles.length,
             files: savedFiles,
+            runId,
+            rulesFile: rulesFilePath,
+            generationStatus: "ready",
         });
-    } catch {
-        res.status(500).json({ error: "Unable to store branding files." });
+    } catch (error) {
+        const detail = error instanceof Error ? error.message : "unknown error";
+        console.error("Branding set generation failed", { identifier, detail });
+        res.status(500).json({ error: `Unable to store branding files: ${detail}` });
     }
 });
 
@@ -201,7 +194,7 @@ app.put("/api/branding-sets/:identifier/rules", async (req: Request, res: Respon
     }
 });
 
-app.post(ApiRoutes.chat, async (req: Request, res: Response<EndpointRes<ChatEndpoint>>) => {
+app.post(ApiRoutes.chat, upload.array("files", 25), async (req: Request, res: Response<EndpointRes<ChatEndpoint>>) => {
     const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
     if (!message) {
         res.status(400).json({ error: "Message is required." });
@@ -216,27 +209,32 @@ app.post(ApiRoutes.chat, async (req: Request, res: Response<EndpointRes<ChatEndp
         return;
     }
 
-    const receivedFiles: ChatAttachmentFile[] = Array.isArray(req.body?.files)
-        ? req.body.files
-              .filter((file: unknown): file is ChatAttachmentFile => {
-                  const value = file as { name?: unknown; size?: unknown; mimeType?: unknown };
-                  return (
-                      typeof value?.name === "string" &&
-                      typeof value?.size === "number" &&
-                      typeof value?.mimeType === "string"
-                  );
-              })
-        : [];
+    const incomingFiles = (req.files as Express.Multer.File[] | undefined) ?? [];
+    const receivedFiles: ChatAttachmentFile[] = incomingFiles.map((file) => ({
+        name: file.originalname,
+        size: file.size,
+        mimeType: file.mimetype,
+    }));
 
     try {
         await ensureStorageRoots();
 
         const companyKey = brandingSetId ?? "general";
+        const runId = createRunId();
+        const inDirectory = path.join(IN_ROOT, companyKey, runId);
         const outDirectory = path.join(OUT_ROOT, companyKey);
-        const outputFileName = `${createRunId()}.md`;
+        const outputFileName = `${createRunId()}.html`;
         const outputFilePath = path.join(outDirectory, outputFileName);
 
-        await fs.mkdir(outDirectory, { recursive: true });
+        await Promise.all([fs.mkdir(inDirectory, { recursive: true }), fs.mkdir(outDirectory, { recursive: true })]);
+
+        const savedInputFiles: string[] = [];
+        for (const file of incomingFiles) {
+            const sanitizedName = sanitizeFileName(file.originalname);
+            const target = await resolveUniqueFilePath(inDirectory, sanitizedName);
+            await fs.writeFile(target.filePath, file.buffer);
+            savedInputFiles.push(target.fileName);
+        }
 
         let rulesContent = "No rules file found.";
         if (brandingSetId) {
@@ -248,26 +246,15 @@ app.post(ApiRoutes.chat, async (req: Request, res: Response<EndpointRes<ChatEndp
             }
         }
 
-        const outputContent = [
-            "# Generated Output",
-            "",
-            `Created: ${new Date().toISOString()}`,
-            `Branding Set: ${brandingSetId ?? "none"}`,
-            `Attachments: ${receivedFiles.length}`,
-            "",
-            "## User Request",
+        await generateArtifactOutput({
+            brandingSetId,
             message,
-            "",
-            "## Applied Rules",
             rulesContent,
-            "",
-            "## Draft Response",
-            brandingSetId
-                ? `Prepared response for branding set '${brandingSetId}'. Replace this section with your local agent output.`
-                : "Prepared response without a branding set. Replace this section with your local agent output.",
-        ].join("\n");
-
-        await fs.writeFile(outputFilePath, outputContent, "utf8");
+            receivedFiles,
+            outputFilePath,
+            sourceDir: inDirectory,
+            sourceFiles: savedInputFiles,
+        });
 
         const downloadUrl = `/api/out/${companyKey}/${encodeURIComponent(outputFileName)}`;
         const assistantMessage = brandingSetId
@@ -278,9 +265,15 @@ app.post(ApiRoutes.chat, async (req: Request, res: Response<EndpointRes<ChatEndp
             message: assistantMessage,
             brandingSetId,
             receivedFiles,
+            outputFile: {
+                fileName: outputFileName,
+                downloadUrl,
+            },
         });
-    } catch {
-        res.status(500).json({ error: "Unable to generate output file." });
+    } catch (error) {
+        const detail = error instanceof Error ? error.message : "unknown error";
+        console.error("Artifact generation failed", { brandingSetId, detail });
+        res.status(500).json({ error: `Unable to generate output file: ${detail}` });
     }
 });
 
@@ -295,8 +288,8 @@ app.get("/api/out/:company/:fileName", async (req: Request, res: Response) => {
 
     const fileNameParam = typeof req.params.fileName === "string" ? req.params.fileName : "";
     const safeFileName = path.basename(fileNameParam);
-    if (!safeFileName.endsWith(".md")) {
-        res.status(400).json({ error: "Only markdown output files are allowed." });
+    if (!safeFileName.endsWith(".md") && !safeFileName.endsWith(".html")) {
+        res.status(400).json({ error: "Only markdown or html output files are allowed." });
         return;
     }
 
@@ -316,3 +309,4 @@ app.get(ApiRoutes.ping, (req: Request, res: Response<EndpointRes<PingEndpoint>>)
 });
 
 app.listen(3000);
+

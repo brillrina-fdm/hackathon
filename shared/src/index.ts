@@ -29,6 +29,9 @@ export type UploadBrandingSetEndpoint = Endpoint<
         identifier: BrandingSetIdentifier;
         fileCount: number;
         files: string[];
+        runId?: string;
+        rulesFile?: string;
+        generationStatus?: "ready" | "failed" | "processing";
     } | ApiErrorResponse
 >;
 
@@ -48,5 +51,9 @@ export type ChatEndpoint = Endpoint<
         message: string;
         brandingSetId: BrandingSetIdentifier | null;
         receivedFiles: ChatAttachmentFile[];
+        outputFile?: {
+            fileName: string;
+            downloadUrl: string;
+        };
     } | ApiErrorResponse
 >;

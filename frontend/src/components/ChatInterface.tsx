@@ -48,6 +48,11 @@ function ChatInterface({ pingEndpoint = ApiRoutes.ping }: ChatInterfaceProps) {
         return normalized;
     };
 
+    const isErrorPayload = (payload: unknown): payload is { error: string } => {
+        const value = payload as { error?: unknown };
+        return typeof value?.error === "string";
+    };
+
     const loadBrandingSets = async () => {
         setIsLoadingBrandingSets(true);
 
@@ -58,7 +63,11 @@ function ChatInterface({ pingEndpoint = ApiRoutes.ping }: ChatInterfaceProps) {
             }
 
             const payload = (await response.json()) as BrandingSetListResponse;
-            const nextItems = Array.isArray(payload.items) ? payload.items.filter((item) => typeof item === "string") : [];
+            if (isErrorPayload(payload)) {
+                throw new Error(payload.error);
+            }
+
+            const nextItems = Array.isArray(payload.items) ? payload.items.filter((item: string) => typeof item === "string") : [];
 
             setAvailableBrandingSets(nextItems);
             setBrandingSetId((current) => (current && nextItems.includes(current) ? current : ""));
@@ -215,7 +224,11 @@ function ChatInterface({ pingEndpoint = ApiRoutes.ping }: ChatInterfaceProps) {
 
             const payload = (await response.json()) as BrandingSetUploadResponse;
             if (!response.ok) {
-                throw new Error(payload.error ?? `Branding upload failed (${response.status})`);
+                throw new Error(isErrorPayload(payload) ? payload.error : `Branding upload failed (${response.status})`);
+            }
+
+            if (isErrorPayload(payload)) {
+                throw new Error(payload.error);
             }
 
             const uploadedIdentifier = typeof payload.identifier === "string" ? payload.identifier : normalizedIdentifier;
@@ -277,15 +290,23 @@ function ChatInterface({ pingEndpoint = ApiRoutes.ping }: ChatInterfaceProps) {
 
             const payload = (await response.json()) as ChatApiResponse;
             if (!response.ok) {
-                throw new Error(payload.error ?? `Chat request failed (${response.status})`);
+                throw new Error(isErrorPayload(payload) ? payload.error : `Chat request failed (${response.status})`);
             }
+
+            if (isErrorPayload(payload)) {
+                throw new Error(payload.error);
+            }
+
+            const assistantMessage = payload.outputFile
+                ? `${payload.message}\n\nDownload generated file: ${payload.outputFile.downloadUrl}`
+                : payload.message;
 
             setMessages((current) => [
                 ...current,
                 {
                     id: crypto.randomUUID(),
                     role: "assistant",
-                    content: payload.message ?? "Message received.",
+                    content: assistantMessage ?? "Message received.",
                 },
             ]);
         } catch (submitError) {
